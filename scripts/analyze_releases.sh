@@ -4,6 +4,7 @@
 MONTHS=12
 PROJECT="all"
 ACTION="all"
+PROJECTS="celestia arbitrum eigenda avalanche optimism op_succinct"
 
 # First, check if directories exist and create them if needed
 mkdir -p scripts jsons analysis comparison_analysis
@@ -23,9 +24,10 @@ function show_help {
     echo "Options:"
     echo "  -m, --months N    Look back N months (default: 12)"
     echo "  -p, --project X   Analyze only project X (default: all)"
-    echo "                    Valid projects: celestia, arbitrum, eigenda, avalanche, optimism, op_succinct"
+    echo "                    Valid projects: celestia, arbitrum, eigenda, avalanche, optimism, op_succinct, cosmos"
     echo "  -a, --action Y    Perform only action Y (default: all)"
     echo "                    Valid actions: extract, analyze, compare"
+    echo "  -l, --list L      Comma-separated list of projects to analyze"
     echo "  -d, --debug       Enable debug mode"
     echo "  -r, --raw-html    Save raw HTML for debugging"
     echo "  -n, --no-rate-limit Disable rate limiting"
@@ -35,6 +37,7 @@ function show_help {
     echo "Examples:"
     echo "  ./analyze_releases.sh -m 6                 Run all with 6 months lookback"
     echo "  ./analyze_releases.sh -p celestia -a extract Extract only Celestia data"
+    echo "  ./analyze_releases.sh -l 'celestia,cosmos' Analyze only Celestia and Cosmos"
     echo "  ./analyze_releases.sh -c -m 3              Clean and run with 3 months lookback"
 }
 
@@ -51,6 +54,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         -a|--action)
             ACTION="$2"
+            shift 2
+            ;;
+        -l|--list)
+            PROJECTS="${2//,/ }" # Convert comma-separated list to space-separated
+            PROJECT="custom"
             shift 2
             ;;
         -d|--debug)
@@ -93,6 +101,14 @@ fi
 
 # Add project and action
 if [[ "$PROJECT" == "all" ]]; then
+    if [[ "$ACTION" == "all" ]]; then
+        MAKE_CMD="$MAKE_CMD all"
+    else
+        MAKE_CMD="$MAKE_CMD $ACTION"
+    fi
+elif [[ "$PROJECT" == "custom" ]]; then
+    # For custom list of projects
+    MAKE_CMD="$MAKE_CMD PROJECTS='$PROJECTS'"
     if [[ "$ACTION" == "all" ]]; then
         MAKE_CMD="$MAKE_CMD all"
     else

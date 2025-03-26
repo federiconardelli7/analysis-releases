@@ -8,6 +8,19 @@ import sys
 from datetime import datetime, timedelta
 import re
 import numpy as np
+import argparse
+
+# Project colors for consistent visualization
+project_colors = {
+    'Celestia': '#FF9999',
+    'Arbitrum': '#D4AF37',
+    'EigenDA': '#66CC66',
+    'Avalanche': '#E60000',  
+    'Optimism': '#6495ED',
+    'OP Succinct': '#44AA44',
+    'Cosmos': '#9370DB',
+    # Add more projects with colors here
+}
 
 def load_stats(project_name, stats_file):
     """Load statistics from a JSON file"""
@@ -18,10 +31,10 @@ def load_stats(project_name, stats_file):
             return stats
     except FileNotFoundError:
         print(f"ERROR: Statistics file not found: {stats_file}")
-        print(f"Make sure to run celestia_release_analytics.py for {project_name} first!")
+        print(f"Make sure to run analytic_releases.py for {project_name} first!")
         return None
 
-def create_comparison_report(stats_list, output_dir="comparison_analysis"):
+def create_comparison_report(stats_list, output_dir="comparison_analysis", months_lookback=6):
     """Create comparison visualizations and report"""
     # Filter out None values (failed loads)
     stats_list = [stats for stats in stats_list if stats is not None]
@@ -30,12 +43,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         print("No valid statistics files were loaded. Cannot generate comparison.")
         return
     
-    # Extract months value from environment or use a default
-    try:
-        months_lookback = int(os.environ.get('MONTHS', '6'))
-    except (ValueError, TypeError):
-        months_lookback = 6  # Default if not specified or invalid
-    
+    # Get the timeframe text for titles
     timeframe_text = f"(Last {months_lookback} Months)"
     
     # Create output directory if it doesn't exist
@@ -45,20 +53,47 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     # Convert to DataFrame for easier plotting
     df = pd.DataFrame(stats_list)
     
+    # Access global project_colors dictionary
+    global project_colors
+    
+    # Add missing colors for any new projects
+    for project in df['project']:
+        if project not in project_colors:
+            # Generate a random color
+            import random
+            r = random.randint(0, 255)
+            g = random.randint(0, 255)
+            b = random.randint(0, 255)
+            project_colors[project] = f'#{r:02x}{g:02x}{b:02x}'
+            print(f"Added random color for project: {project}")
+    
     # Create a custom color palette that ensures Avalanche is always red
     def get_project_colors(projects):
-        # Use a standard color palette as a base
-        standard_colors = sns.color_palette("husl", len(projects))
-        
         # Create a dictionary to map projects to colors
         color_map = {}
         
+        # First, use our predefined colors from the global dictionary
+        global project_colors
+        
         # Assign colors to each project
-        for i, project in enumerate(projects):
-            if project == "Avalanche":
-                color_map[project] = (0.8, 0.2, 0.2)  # Red for Avalanche
+        for project in projects:
+            if project in project_colors:
+                # Use our predefined colors
+                color_map[project] = project_colors[project]
             else:
-                color_map[project] = standard_colors[i]
+                # Generate a random color for new projects
+                import random
+                r = random.randint(0, 255)
+                g = random.randint(0, 255)
+                b = random.randint(0, 255)
+                new_color = f'#{r:02x}{g:02x}{b:02x}'
+                project_colors[project] = new_color
+                color_map[project] = new_color
+        
+        # Always ensure Avalanche is red
+        if "Avalanche" in projects:
+            color_map["Avalanche"] = '#E60000'  # Better red for Avalanche
+            project_colors["Avalanche"] = '#E60000'  # Update global dictionary too
         
         return color_map
 
@@ -75,6 +110,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.ylabel('Number of Releases')
     plt.xlabel('Project')
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/total_releases_comparison.png")
     
     # 2. Release Frequency (Avg Days Between Releases)
@@ -87,6 +123,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.ylabel('Days')
     plt.xlabel('Project')
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/release_frequency_comparison.png")
     
     # 3. Mandatory vs Optional vs Unknown
@@ -120,6 +157,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.xlabel('Project')
     plt.legend(title='Release Type')
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/release_types_comparison.png")
     
     # 4. Stable vs Pre-release
@@ -147,6 +185,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.xlabel('Project')
     plt.legend(title='Stability')
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/stability_comparison.png")
     
     # 5. Releases per Month
@@ -243,6 +282,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend(loc='upper left')
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/cumulative_releases_comparison.png")
     
     # Create a unified release timeline visualization
@@ -268,6 +308,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.xticks(months, [d.strftime('%b %Y') for d in months], rotation=45)
     
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/release_timeline_comparison.png")
     
     # Release Frequency Over Time (releases per month)
@@ -333,6 +374,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend(loc='upper left')
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/release_frequency_over_time.png")
     
     # Stability Trend Over Time - Fix
@@ -396,6 +438,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend(loc='upper left')
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/stability_trend.png")
     
     # Version Evolution Speed
@@ -478,6 +521,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         plt.legend(['Major Version Changes', 'Minor Version Changes'])
         plt.grid(axis='y', linestyle='--', alpha=0.7)
         plt.tight_layout()
+        add_generation_date(plt)
         plt.savefig(f"{output_dir}/version_evolution_speed.png")
     
     # Release Consistency Analysis (Variation in Release Cadence)
@@ -509,6 +553,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         plt.ylabel('Coefficient of Variation (%) - Lower is More Consistent')
         plt.grid(axis='y', linestyle='--', alpha=0.7)
         plt.tight_layout()
+        add_generation_date(plt)
         plt.savefig(f"{output_dir}/release_consistency.png")
 
     # Replace the monthly release frequency visualization with a clearer heatmap version
@@ -526,10 +571,13 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
     heatmap_data = []
 
     # Prepare data for all projects
-    for project, dates in all_project_releases.items():
+    for project, releases in all_project_releases.items():
+        # Extract all release dates
+        release_dates = releases
+        
         # Count releases by month
         month_counts = {}
-        for date in dates:
+        for date in release_dates:
             month_key = date.strftime('%Y-%m')
             month_counts[month_key] = month_counts.get(month_key, 0) + 1
         
@@ -537,16 +585,16 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         for month in month_labels:
             count = month_counts.get(month, 0)
             heatmap_data.append({
-                'Project': project,
-                'Month': month,
-                'Releases': count
+                'project': project,
+                'month': month,
+                'releases': count
             })
 
     # Convert to DataFrame
-    heatmap_df = pd.DataFrame(heatmap_data)
+    heatmap_df = pd.DataFrame(heatmap_data, columns=['project', 'month', 'releases'])
 
     # Pivot the data for the heatmap
-    pivot_data = heatmap_df.pivot(index='Project', columns='Month', values='Releases')
+    pivot_data = heatmap_df.pivot(index='project', columns='month', values='releases')
 
     # Ensure proper ordering of projects (with Avalanche in a prominent position)
     project_order = [p for p in all_project_releases.keys()]
@@ -568,6 +616,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         spine.set_color('black')
 
     plt.tight_layout()
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/monthly_releases_heatmap.png")
 
     # Fix the average monthly releases calculation to account for project timeframes
@@ -605,6 +654,10 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         # Convert to DataFrame and sort
         avg_df = pd.DataFrame(true_monthly_averages)
         avg_df = avg_df.sort_values('avg_releases', ascending=False)
+        avg_df = avg_df.set_index('project')
+        
+        # Also create our new integrated chart
+        create_integrated_avg_releases_chart(avg_df, stats_list, output_dir, timeframe_text)
         
         # Manually create bar chart to have better control of positions
         fig, ax = plt.subplots(figsize=(14, 8))
@@ -612,11 +665,11 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         
         # Set x-tick labels with proper rotation
         ax.set_xticks(range(len(avg_df)))
-        ax.set_xticklabels(avg_df['project'], rotation=45, ha='right')
+        ax.set_xticklabels(avg_df.index, rotation=45, ha='right')
         
         # Add colors to bars using project_colors
         for i, bar in enumerate(bars):
-            project = avg_df.iloc[i]['project']
+            project = avg_df.index[i]
             bar.set_color(project_colors[project])
         
         # For the integrated view
@@ -653,6 +706,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         plt.xlabel('Project')
         plt.grid(axis='y', linestyle='--', alpha=0.7)
         plt.tight_layout()
+        add_generation_date(plt)
         plt.savefig(f"{output_dir}/avg_monthly_releases.png")
         
         # Print detailed average information for reference
@@ -712,6 +766,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         plt.legend(loc='upper left')
         plt.xticks(rotation=45)
         plt.tight_layout()
+        add_generation_date(plt)
         plt.savefig(f"{output_dir}/quarterly_release_trend.png")
     
     # Generate comparison report text
@@ -768,7 +823,7 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
 
     # Add this after all other visualizations
     # Create an integrated visualization combining key metrics
-    plt.figure(figsize=(16, 18))  # Taller figure for three charts
+    plt.figure(figsize=(16, 12))  # Adjusted height for two charts
 
     # Get consistent project ordering across all charts
     common_projects = []
@@ -776,8 +831,10 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
         if project in project_colors:
             common_projects.append(project)
 
-    # 1. First subplot: Average Monthly Releases
-    ax1 = plt.subplot(3, 1, 1)
+    # 1. First subplot: Integrated Average Monthly Releases with Type Distribution
+    ax1 = plt.subplot(2, 1, 1)  # Now we'll have only 2 rows, 1 column
+
+    # Get DataFrame for projects and their average releases
     if true_monthly_averages:
         avg_df = pd.DataFrame(true_monthly_averages)
         avg_df = avg_df.set_index('project')
@@ -787,84 +844,126 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
             available_projects = [p for p in common_projects if p in avg_df.index]
             avg_df = avg_df.reindex(available_projects)
             
-            # Create bar chart
-            avg_df['avg_releases'].plot(kind='bar', ax=ax1, color=[project_colors[p] for p in avg_df.index])
+            # Get project names
+            projects = avg_df.index.tolist()
             
-            # For the integrated view
+            # Create empty lists for the stacked bar data
+            mandatory_heights = []
+            optional_heights = []
+            unknown_heights = []
+            
+            # Calculate heights for each segment
+            for project in projects:
+                avg_releases = avg_df.loc[project, 'avg_releases']
+                
+                # Find stats for this project
+                project_stats = next((s for s in stats_list if s['project'] == project), None)
+                if not project_stats:
+                    mandatory_heights.append(0)
+                    optional_heights.append(0)
+                    unknown_heights.append(avg_releases)
+                    continue
+                    
+                total_releases = project_stats['total_releases']
+                if total_releases > 0:
+                    mandatory_pct = project_stats['release_types']['mandatory'] / total_releases
+                    optional_pct = project_stats['release_types']['optional'] / total_releases
+                    unknown_pct = project_stats['release_types']['unknown'] / total_releases
+                    
+                    mandatory_heights.append(avg_releases * mandatory_pct)
+                    optional_heights.append(avg_releases * optional_pct)
+                    unknown_heights.append(avg_releases * unknown_pct)
+                else:
+                    mandatory_heights.append(0)
+                    optional_heights.append(0)
+                    unknown_heights.append(0)
+            
+            # Create the stacked bar chart
+            x = range(len(projects))
+            
+            # Plot stacked bars
+            mandatory_bars = ax1.bar(x, mandatory_heights, color='#ff6666', label='Mandatory')
+            optional_bars = ax1.bar(x, optional_heights, bottom=mandatory_heights, color='#66b3ff', label='Optional')
+            
+            combined_heights = [m + o for m, o in zip(mandatory_heights, optional_heights)]
+            unknown_bars = ax1.bar(x, unknown_heights, bottom=combined_heights, color='#c2c2f0', label='Unknown')
+            
+            # Set x-tick labels
+            ax1.set_xticks(x)
+            ax1.set_xticklabels(projects, rotation=45, ha='right')
+            
+            # Add the period annotations ABOVE the bars instead of inside them
             for i, (idx, row) in enumerate(avg_df.iterrows()):
                 project = idx
                 active_period = f"{row['first_release']} to {row['last_release']}"
                 months_info = f"({row['months_active']} months)"
                 
-                # Only add text annotation if the bar is tall enough
-                if row['avg_releases'] > 0.7:  # Only add text if bar is tall enough
-                    ax1.annotate(
-                        f"{active_period}\n{months_info}",
-                        xy=(i, row['avg_releases'] / 2),  # Position in the middle of the bar
-                        ha='center', va='center',  # Center alignment
-                        fontsize=7,
-                        color='white',  # White text for contrast
-                        weight='bold',  # Make it bold for better readability
-                        bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.3)
-                    )
-        
-        ax1.set_title(f'Average Monthly Releases During Active Period {timeframe_text}', fontsize=14)
-        ax1.set_ylabel('Releases per Month')
-        plt.xticks(rotation=45, ha='right')
-        ax1.grid(axis='y', linestyle='--', alpha=0.7)
-
-    # 2. Second subplot: Release Types Distribution
-    ax2 = plt.subplot(3, 1, 2)
-    types_data = []
-
-    for project in common_projects:
-        project_stats = next((s for s in stats_list if s['project'] == project), None)
-        if project_stats:
-            total = project_stats['total_releases']
-            if total > 0:
+                # Always put the text above the bar
+                ax1.annotate(
+                    f"{active_period}\n{months_info}",
+                    xy=(i, row['avg_releases']),
+                    xytext=(0, 5),  # 5 points above
+                    textcoords="offset points",
+                    ha='center', va='bottom',
+                    fontsize=7,
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="gray", alpha=0.8)
+                )
+            
+            # Add percentage labels inside each segment (improved visibility)
+            for i, project in enumerate(projects):
+                # Find the stats for this project
+                project_stats = next((s for s in stats_list if s['project'] == project), None)
+                if not project_stats or project_stats['total_releases'] == 0:
+                    continue
+                    
+                # Calculate percentages
+                total = project_stats['total_releases']
                 mandatory_pct = project_stats['release_types']['mandatory'] / total * 100
                 optional_pct = project_stats['release_types']['optional'] / total * 100
                 unknown_pct = project_stats['release_types']['unknown'] / total * 100
                 
-                types_data.append({
-                    'project': project,
-                    'Mandatory': mandatory_pct,
-                    'Optional': optional_pct,
-                    'Unknown': unknown_pct
-                })
-
-    if types_data:
-        types_df = pd.DataFrame(types_data).set_index('project')
-        types_df.plot(kind='bar', stacked=True, ax=ax2, 
-                     color=['#ff6666', '#66b3ff', '#c2c2f0'])
-        
-        # Add percentage labels on bars
-        for i, (idx, row) in enumerate(types_df.iterrows()):
-            mandatory = row['Mandatory']
-            optional = row['Optional']
+                # Add mandatory percentage even for smaller segments
+                if mandatory_pct > 5 and mandatory_heights[i] > 0.1:
+                    ax1.annotate(
+                        f"{mandatory_pct:.0f}%",
+                        xy=(i, mandatory_heights[i] / 2),
+                        ha='center', va='center',
+                        color='white', fontweight='bold',
+                        fontsize=9,
+                        bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.4)
+                    )
+                    
+                # Add optional percentage even for smaller segments
+                if optional_pct > 5 and optional_heights[i] > 0.1:
+                    middle_y = mandatory_heights[i] + (optional_heights[i] / 2)
+                    ax1.annotate(
+                        f"{optional_pct:.0f}%",
+                        xy=(i, middle_y),
+                        ha='center', va='center',
+                        color='white', fontweight='bold',
+                        fontsize=9,
+                        bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.4)
+                    )
+                    
+                # Add unknown percentage even for smaller segments
+                if unknown_pct > 5 and unknown_heights[i] > 0.1:
+                    middle_y = mandatory_heights[i] + optional_heights[i] + (unknown_heights[i] / 2)
+                    ax1.annotate(
+                        f"{unknown_pct:.0f}%",
+                        xy=(i, middle_y),
+                        ha='center', va='center',
+                        color='white', fontweight='bold',
+                        fontsize=9,
+                        bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.4)
+                    )
             
-            # Only label if significant percentage
-            if mandatory > 10:
-                ax2.annotate(f"{mandatory:.0f}%", 
-                            xy=(i, mandatory/2), 
-                            ha='center', va='center',
-                            color='white', fontweight='bold')
-            
-            if optional > 10:
-                ax2.annotate(f"{optional:.0f}%", 
-                            xy=(i, mandatory + optional/2), 
-                            ha='center', va='center',
-                            color='white', fontweight='bold')
-        
-        ax2.set_title(f'Release Types Distribution {timeframe_text} (Lower Mandatory % = More Stable)', fontsize=14)
-        ax2.set_ylabel('Percentage')
-        ax2.set_ylim(0, 100)  # Force scale to 0-100%
-        plt.xticks(rotation=45, ha='right')
-        ax2.legend(title='Release Type')
-        ax2.grid(axis='y', linestyle='--', alpha=0.7)
+            ax1.set_title(f'Average Monthly Releases with Type Distribution {timeframe_text}', fontsize=14)
+            ax1.set_ylabel('Releases per Month')
+            ax1.legend(title='Release Type')
+            ax1.grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 3. Third subplot: Average Days Between Releases
-    ax3 = plt.subplot(3, 1, 3)
+    # 2. Second subplot: Average Days Between Releases (unchanged)
+    ax2 = plt.subplot(2, 1, 2)  # Second row, single column
     freq_data = []
 
     for project in common_projects:
@@ -878,109 +977,239 @@ def create_comparison_report(stats_list, output_dir="comparison_analysis"):
 
     if freq_data:
         freq_df = pd.DataFrame(freq_data).set_index('project')
-        bars = freq_df['avg_days'].plot(kind='bar', ax=ax3, color=[project_colors[p] for p in freq_df.index])
+        bars = freq_df['avg_days'].plot(kind='bar', ax=ax2, color=[project_colors[p] for p in freq_df.index])
         
         # Add value labels on top of bars
         for i, (idx, row) in enumerate(freq_df.iterrows()):
-            ax3.annotate(f"{row['avg_days']:.1f} days", 
+            ax2.annotate(f"{row['avg_days']:.1f} days", 
                         xy=(i, row['avg_days']),
                         xytext=(0, 3),
                         textcoords="offset points",
                         ha='center', va='bottom')
         
-        ax3.set_title(f'Average Days Between Releases {timeframe_text}', fontsize=14)
-        ax3.set_ylabel('Days')
+        ax2.set_title(f'Average Days Between Releases {timeframe_text}', fontsize=14)
+        ax2.set_ylabel('Days')
         plt.xticks(rotation=45, ha='right')
-        ax3.grid(axis='y', linestyle='--', alpha=0.7)
+        ax2.grid(axis='y', linestyle='--', alpha=0.7)
 
     plt.tight_layout(pad=3.0)
+    add_generation_date(plt)
     plt.savefig(f"{output_dir}/integrated_stability_analysis.png")
 
-def main():
-    import argparse
+def add_generation_date(plt):
+    """Add generation date to the bottom of the plot"""
+    generation_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    plt.figtext(0.99, 0.01, f"Generated: {generation_time}", 
+               horizontalalignment='right', fontsize=8, color='gray')
+
+def create_integrated_avg_releases_chart(avg_df, stats_list, output_dir, timeframe_text):
+    """Create integrated chart showing average monthly releases with release type distribution"""
+    # Create figure and axes
+    fig, ax = plt.subplots(figsize=(14, 8))
     
+    # Get project names from avg_df
+    projects = avg_df.index.tolist()
+    
+    # Create empty lists to store data for stacked bars
+    mandatory_heights = []
+    optional_heights = []
+    unknown_heights = []
+    
+    # Calculate heights for each segment based on percentages and total height
+    for project in projects:
+        avg_releases = avg_df.loc[project, 'avg_releases']
+        
+        # Find the stats for this project
+        project_stats = next((s for s in stats_list if s['project'] == project), None)
+        if not project_stats:
+            # If we can't find the stats, use 0 for all
+            mandatory_heights.append(0)
+            optional_heights.append(0)
+            unknown_heights.append(avg_releases)  # Put all in unknown
+            continue
+            
+        total_releases = project_stats['total_releases']
+        if total_releases > 0:
+            # Calculate percentage of each type
+            mandatory_pct = project_stats['release_types']['mandatory'] / total_releases
+            optional_pct = project_stats['release_types']['optional'] / total_releases
+            unknown_pct = project_stats['release_types']['unknown'] / total_releases
+            
+            # Calculate height of each segment
+            mandatory_heights.append(avg_releases * mandatory_pct)
+            optional_heights.append(avg_releases * optional_pct)
+            unknown_heights.append(avg_releases * unknown_pct)
+        else:
+            # No releases
+            mandatory_heights.append(0)
+            optional_heights.append(0)
+            unknown_heights.append(0)
+    
+    # Create the stacked bar chart
+    x = range(len(projects))
+    
+    # Plot bars in order: mandatory at bottom, then optional, then unknown
+    mandatory_bars = ax.bar(x, mandatory_heights, color='#ff6666', label='Mandatory')
+    optional_bars = ax.bar(x, optional_heights, bottom=mandatory_heights, color='#66b3ff', label='Optional')
+    
+    # Calculate the bottom position for unknown (sum of mandatory and optional)
+    combined_heights = [m + o for m, o in zip(mandatory_heights, optional_heights)]
+    unknown_bars = ax.bar(x, unknown_heights, bottom=combined_heights, color='#c2c2f0', label='Unknown')
+    
+    # Set x-tick labels
+    ax.set_xticks(x)
+    ax.set_xticklabels(projects, rotation=45, ha='right')
+    
+    # Add the period annotations ABOVE the bars instead of inside them
+    for i, (idx, row) in enumerate(avg_df.iterrows()):
+        project = idx
+        active_period = f"{row['first_release']} to {row['last_release']}"
+        months_info = f"({row['months_active']} months)"
+        
+        # Always put the text above the bar
+        ax.annotate(
+            f"{active_period}\n{months_info}",
+            xy=(i, row['avg_releases']),
+            xytext=(0, 5),  # 5 points above
+            textcoords="offset points",
+            ha='center', va='bottom',
+            fontsize=7,
+            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="gray", alpha=0.8)
+        )
+            
+    # Add percentage labels inside each segment (improved visibility)
+    for i, project in enumerate(projects):
+        # Find the stats for this project
+        project_stats = next((s for s in stats_list if s['project'] == project), None)
+        if not project_stats or project_stats['total_releases'] == 0:
+            continue
+            
+        # Calculate percentages
+        total = project_stats['total_releases']
+        mandatory_pct = project_stats['release_types']['mandatory'] / total * 100
+        optional_pct = project_stats['release_types']['optional'] / total * 100
+        unknown_pct = project_stats['release_types']['unknown'] / total * 100
+        
+        # Add mandatory percentage even for smaller segments
+        if mandatory_pct > 5 and mandatory_heights[i] > 0.1:
+            ax.annotate(
+                f"{mandatory_pct:.0f}%",
+                xy=(i, mandatory_heights[i] / 2),
+                ha='center', va='center',
+                color='white', fontweight='bold',
+                fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.4)
+            )
+            
+        # Add optional percentage even for smaller segments
+        if optional_pct > 5 and optional_heights[i] > 0.1:
+            middle_y = mandatory_heights[i] + (optional_heights[i] / 2)
+            ax.annotate(
+                f"{optional_pct:.0f}%",
+                xy=(i, middle_y),
+                ha='center', va='center',
+                color='white', fontweight='bold',
+                fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.4)
+            )
+            
+        # Add unknown percentage even for smaller segments
+        if unknown_pct > 5 and unknown_heights[i] > 0.1:
+            middle_y = mandatory_heights[i] + optional_heights[i] + (unknown_heights[i] / 2)
+            ax.annotate(
+                f"{unknown_pct:.0f}%",
+                xy=(i, middle_y),
+                ha='center', va='center',
+                color='white', fontweight='bold',
+                fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.2", fc="black", ec="none", alpha=0.4)
+            )
+    
+    # Set chart title and labels
+    plt.title(f'Average Monthly Releases with Type Distribution {timeframe_text}')
+    plt.ylabel('Average Releases per Month')
+    plt.xlabel('Project')
+    
+    # Add legend
+    plt.legend(title='Release Type')
+    
+    # Add grid lines for better readability
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    # Add generation date
+    add_generation_date(plt)
+    
+    # Save figure
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/integrated_releases_with_types.png")
+    
+    # Return the figure and axes in case we want to modify it further
+    return fig, ax
+
+def main():
     parser = argparse.ArgumentParser(description='Compare GitHub release statistics across projects')
     
-    # Update default paths to be more flexible
+    # Accept any number of projects with statistics files
+    parser.add_argument('--projects', nargs='+', default=[], 
+                      help='List of projects to compare in "name:stats_path" format')
+    
+    # Backwards compatibility for pre-defined projects
     parser.add_argument('--celestia-stats', default=None, help='Path to Celestia statistics JSON')
     parser.add_argument('--arbitrum-stats', default=None, help='Path to Arbitrum statistics JSON')
     parser.add_argument('--eigenda-stats', default=None, help='Path to EigenDA statistics JSON')
     parser.add_argument('--avalanche-stats', default=None, help='Path to Avalanche statistics JSON')
     parser.add_argument('--optimism-stats', default=None, help='Path to Optimism statistics JSON')
     parser.add_argument('--op-succinct-stats', default=None, help='Path to OP Succinct statistics JSON')
+    
     parser.add_argument('--output-dir', default='comparison_analysis', help='Directory to save comparison analysis')
+    parser.add_argument('--months', type=int, default=6, help='Number of months to analyze')
+    
     args = parser.parse_args()
     
-    # Look for statistics files in different possible locations
-    def find_stats_file(project, provided_path):
-        if provided_path and os.path.exists(provided_path):
-            return provided_path
-            
-        # Try different common locations
-        possible_paths = [
-            f"{project.lower()}_analysis/release_statistics.json",
-            f"release_analysis/{project.lower()}_release_statistics.json",
-            f"release_analysis/release_statistics.json"  # If only one project was analyzed
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                print(f"Found statistics for {project} at {path}")
-                return path
-                
-        return None
-    
-    celestia_path = find_stats_file("Celestia", args.celestia_stats)
-    arbitrum_path = find_stats_file("Arbitrum", args.arbitrum_stats)
-    eigenda_path = find_stats_file("EigenDA", args.eigenda_stats)
-    avalanche_path = find_stats_file("Avalanche", args.avalanche_stats)
-    optimism_path = find_stats_file("Optimism", args.optimism_stats)
-    op_succinct_path = find_stats_file("OPSuccinct", args.op_succinct_stats)
-    
-    # Load statistics for each project
     stats_list = []
     
-    if celestia_path:
-        stats = load_stats('Celestia', celestia_path)
-        if stats:
-            stats_list.append(stats)
+    # Process the dynamic project list
+    for project_spec in args.projects:
+        if ':' in project_spec:
+            project_name, stats_path = project_spec.split(':', 1)
+            
+            # Handle special case for "op_succinct"
+            if project_name.lower() == 'op_succinct':
+                project_name = 'OP Succinct'
+            # Handle special cases for names with underscores
+            elif '_' in project_name:
+                parts = project_name.split('_')
+                project_name = ' '.join(part.capitalize() for part in parts)
+            else:
+                # Just capitalize the first letter for most names
+                project_name = project_name.capitalize()
+            
+            stats = load_stats(project_name, stats_path)
+            if stats:
+                stats_list.append(stats)
     
-    if arbitrum_path:
-        stats = load_stats('Arbitrum', arbitrum_path)
-        if stats:
-            stats_list.append(stats)
+    # For backwards compatibility, also process the individual project arguments
+    project_args = {
+        'Celestia': args.celestia_stats,
+        'Arbitrum': args.arbitrum_stats,
+        'EigenDA': args.eigenda_stats, 
+        'Avalanche': args.avalanche_stats,
+        'Optimism': args.optimism_stats,
+        'OP Succinct': args.op_succinct_stats
+    }
     
-    if eigenda_path:
-        stats = load_stats('EigenDA', eigenda_path)
-        if stats:
-            stats_list.append(stats)
-    
-    if avalanche_path:
-        stats = load_stats('Avalanche', avalanche_path)
-        if stats:
-            stats_list.append(stats)
-    
-    if optimism_path:
-        stats = load_stats('Optimism', optimism_path)
-        if stats:
-            stats_list.append(stats)
-    
-    if op_succinct_path:
-        stats = load_stats('OP Succinct', op_succinct_path)
-        if stats:
-            stats_list.append(stats)
+    for project_name, stats_path in project_args.items():
+        if stats_path:
+            stats = load_stats(project_name, stats_path)
+            if stats:
+                stats_list.append(stats)
     
     if not stats_list:
         print("No statistics files were found. Please run the analysis for each project first.")
-        print("Example commands:")
-        print("  ./celestia_release_analytics.py celestia-node_releases.json --output-dir celestia_analysis")
-        print("  ./celestia_release_analytics.py arbitrum_releases.json --output-dir arbitrum_analysis")
-        print("  ./celestia_release_analytics.py eigenda_releases.json --output-dir eigenda_analysis")
-        print("  ./celestia_release_analytics.py avalanche_releases.json --output-dir avalanche_analysis")
         sys.exit(1)
     
-    # Generate comparison report
-    create_comparison_report(stats_list, args.output_dir)
+    # Generate comparison report with months parameter
+    create_comparison_report(stats_list, args.output_dir, args.months)
 
 if __name__ == "__main__":
     main()
